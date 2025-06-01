@@ -7,7 +7,7 @@ import { userScopedFavoriteRouter } from './favorite.routes';
 export const userRouter = Router();
 
 // POST /users/change-password - Change user password
-userRouter.post('/change-password', authenticateJWT, userController.changePasswordHandler); // Added
+userRouter.post('/change-password', authenticateJWT, userController.changePasswordHandler);
 
 // GET /users/:userId/posts - Get all user posts
 userRouter.get('/:userId/posts', postController.getUserPostsHandler);

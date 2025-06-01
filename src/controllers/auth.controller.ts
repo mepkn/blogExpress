@@ -133,63 +133,40 @@ export const authController = {
   forgotPasswordHandler: async (req: Request, res: Response) => {
     const { email } = req.body;
     const genericMessage = 'If an account with that email exists, a password reset link has been sent.';
-
     if (!email || typeof email !== 'string') {
-      // Still return a generic message, but log the bad request
       console.warn('Forgot password attempt with invalid email body:', email);
       return res.status(200).json({ message: genericMessage });
     }
-
     try {
       const user = await userService.findUserByEmail(email);
-
       if (user) {
         const { rawToken, hashedToken, expiresAt } = await authService.generatePasswordResetToken(user.id);
         await authService.storePasswordResetToken(user.id, hashedToken, expiresAt);
-
-        // Simulate sending email
         console.log(`Password reset requested for ${user.email}. Token: ${rawToken}`);
-        // In a real application, you would send an email with a link like:
-        // const resetLink = `https://yourapp.com/reset-password?token=${rawToken}`;
-        // await emailService.sendPasswordResetEmail(user.email, resetLink);
       }
-      // Always return a generic message to avoid email enumeration
       return res.status(200).json({ message: genericMessage });
     } catch (error: any) {
       console.error('Forgot password error:', error.message);
-      // Even in case of an internal error, avoid leaking information.
-      // Log the error for admins, but send a generic message to the user.
       return res.status(200).json({ message: genericMessage });
     }
   },
 
   resetPasswordHandler: async (req: Request, res: Response) => {
     const { token, newPassword } = req.body;
-
     if (!token || typeof token !== 'string' || !newPassword || typeof newPassword !== 'string') {
       return res.status(400).json({ message: 'Token and new password are required and must be strings.' });
     }
-
     try {
       const verifiedTokenData = await authService.verifyPasswordResetToken(token);
-
       if (!verifiedTokenData) {
         return res.status(400).json({ message: 'Invalid or expired password reset token.' });
       }
-
       const passwordResetSuccessful = await authService.resetUserPassword(verifiedTokenData.userId, newPassword);
-
       if (passwordResetSuccessful) {
-        // Clean up the used password reset token
         await authService.deletePasswordResetToken(verifiedTokenData.hashedTokenInDb);
-
-        // For security, log out the user from all other sessions by revoking all their refresh tokens
         await authService.revokeAllTokensForUser(verifiedTokenData.userId);
-
         return res.status(200).json({ message: 'Password has been reset successfully.' });
       } else {
-        // This case might indicate a user not found during reset, which shouldn't happen if verify was successful.
-        // Or a database update issue.
         return res.status(500).json({ message: 'Failed to reset password due to an internal error.' });
       }
     } catch (error: any) {
