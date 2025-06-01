@@ -1,10 +1,10 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import 'dotenv/config';
-import { and, eq, gt } from 'drizzle-orm'; // Added gt
+import { and, eq, gt } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { db } from '../db';
-import { refreshTokens, users, passwordResetTokens } from '../db/schema'; // Added passwordResetTokens
-import crypto from 'crypto'; // Added crypto
+import { passwordResetTokens, refreshTokens, users } from '../db/schema';
 
 // Environment Variable Setup & Validation
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
