@@ -1,17 +1,17 @@
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import 'dotenv/config';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm'; // Added gt
 import jwt from 'jsonwebtoken';
 import { db } from '../db';
-import { passwordResetTokens, refreshTokens, users } from '../db/schema';
+import { refreshTokens, users, passwordResetTokens } from '../db/schema'; // Added passwordResetTokens
+import crypto from 'crypto'; // Added crypto
 
 // Environment Variable Setup & Validation
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const ACCESS_TOKEN_EXPIRATION = process.env.ACCESS_TOKEN_EXPIRATION || '15m';
 const REFRESH_TOKEN_EXPIRATION_SECONDS = parseInt(process.env.REFRESH_TOKEN_EXPIRATION_SECONDS || '604800', 10);
-const PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = parseInt(process.env.PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES || '60', 10);
+const PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = parseInt(process.env.PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES || '60', 10); // Added
 const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || process.env.SALT_ROUNDS || '10', 10);
 
 if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
@@ -173,10 +173,12 @@ export const authService = {
 
   // Store Password Reset Token
   storePasswordResetToken: async (userId: string, hashedToken: string, expiresAt: Date): Promise<void> => {
+    // Optional: Clean up old/expired tokens for the user before inserting a new one
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+
     await db.insert(passwordResetTokens).values({
       userId,
-      token: hashedToken,
+      token: hashedToken, // Schema uses 'token' for the column name
       expiresAt,
     });
   },
@@ -184,12 +186,14 @@ export const authService = {
   // Verify Password Reset Token
   verifyPasswordResetToken: async (providedRawToken: string): Promise<{ userId: string; email: string; hashedTokenInDb: string } | null> => {
     const allValidTokens = await db.query.passwordResetTokens.findMany({
-      where: gt(passwordResetTokens.expiresAt, new Date()),
+      where: gt(passwordResetTokens.expiresAt, new Date()), // Fetch all non-expired tokens
     });
+
     if (!allValidTokens.length) {
       console.warn('No valid (non-expired) password reset tokens found in the database.');
       return null;
     }
+
     for (const tokenEntry of allValidTokens) {
       const isMatch = await authService.comparePassword(providedRawToken, tokenEntry.token);
       if (isMatch) {
@@ -197,13 +201,18 @@ export const authService = {
           where: eq(users.id, tokenEntry.userId),
           columns: { id: true, email: true },
         });
+
         if (!user) {
           console.error(`User ${tokenEntry.userId} not found for a matching password reset token ${tokenEntry.id}. This indicates data inconsistency.`);
-          continue;
+          // Optionally, clean up this specific orphaned token if appropriate, though caution is advised.
+          // await db.delete(passwordResetTokens).where(eq(passwordResetTokens.id, tokenEntry.id));
+          continue; // Try other tokens if any, though this specific token is problematic
         }
+        // Important: Return the token hash from the DB for deletion purposes
         return { userId: user.id, email: user.email, hashedTokenInDb: tokenEntry.token };
       }
     }
+    // If no token matched after checking all valid ones
     console.warn('Provided raw token did not match any valid stored password reset tokens after bcrypt comparison.');
     return null;
   },
@@ -214,7 +223,8 @@ export const authService = {
     const result = await db.update(users)
       .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
       .where(eq(users.id, userId))
-      .returning({ id: users.id });
+      .returning({ id: users.id }); // Check if update was successful
+
     return result.length > 0;
   },
 

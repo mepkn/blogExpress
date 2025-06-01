@@ -68,10 +68,12 @@ export const userService = {
       throw new Error('User not found.');
     }
     const user = userArray[0];
+
     const isOldPasswordValid = await authService.comparePassword(oldPasswordPlain, user.passwordHash);
     if (!isOldPasswordValid) {
       throw new Error('Invalid old password.');
     }
+
     const newPasswordHash = await authService.hashPassword(newPasswordPlain);
     await db.update(users).set({ passwordHash: newPasswordHash, updatedAt: new Date() }).where(eq(users.id, userId));
     return true;
