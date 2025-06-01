@@ -181,7 +181,7 @@ export const authController = {
 
       if (passwordResetSuccessful) {
         // Clean up the used password reset token
-        await authService.deletePasswordResetToken(verifiedTokenData.hashedToken);
+        await authService.deletePasswordResetToken(verifiedTokenData.hashedTokenInDb);
 
         // For security, log out the user from all other sessions by revoking all their refresh tokens
         await authService.revokeAllTokensForUser(verifiedTokenData.userId);

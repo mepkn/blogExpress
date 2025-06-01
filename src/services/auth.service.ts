@@ -184,34 +184,37 @@ export const authService = {
   },
 
   // Verify Password Reset Token
-  verifyPasswordResetToken: async (providedRawToken: string): Promise<{ userId: string; email: string; hashedToken: string } | null> => {
-    const hashedProvidedToken = await authService.hashPasswordResetToken(providedRawToken);
-
-    const tokenEntry = await db.query.passwordResetTokens.findFirst({
-      where: and(
-        eq(passwordResetTokens.token, hashedProvidedToken),
-        gt(passwordResetTokens.expiresAt, new Date()) // Check if token is not expired
-      ),
+  verifyPasswordResetToken: async (providedRawToken: string): Promise<{ userId: string; email: string; hashedTokenInDb: string } | null> => {
+    const allValidTokens = await db.query.passwordResetTokens.findMany({
+      where: gt(passwordResetTokens.expiresAt, new Date()), // Fetch all non-expired tokens
     });
 
-    if (!tokenEntry) {
-      console.warn('Password reset token not found or expired for token hash:', hashedProvidedToken);
+    if (!allValidTokens.length) {
+      console.warn('No valid (non-expired) password reset tokens found in the database.');
       return null;
     }
 
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, tokenEntry.userId),
-      columns: { id: true, email: true },
-    });
+    for (const tokenEntry of allValidTokens) {
+      const isMatch = await authService.comparePassword(providedRawToken, tokenEntry.token);
+      if (isMatch) {
+        const user = await db.query.users.findFirst({
+          where: eq(users.id, tokenEntry.userId),
+          columns: { id: true, email: true },
+        });
 
-    if (!user) {
-      console.error(`User ${tokenEntry.userId} not found for a valid password reset token. This should not happen.`);
-      // Attempt to clean up the orphaned token
-      await db.delete(passwordResetTokens).where(eq(passwordResetTokens.id, tokenEntry.id));
-      return null;
+        if (!user) {
+          console.error(`User ${tokenEntry.userId} not found for a matching password reset token ${tokenEntry.id}. This indicates data inconsistency.`);
+          // Optionally, clean up this specific orphaned token if appropriate, though caution is advised.
+          // await db.delete(passwordResetTokens).where(eq(passwordResetTokens.id, tokenEntry.id));
+          continue; // Try other tokens if any, though this specific token is problematic
+        }
+        // Important: Return the token hash from the DB for deletion purposes
+        return { userId: user.id, email: user.email, hashedTokenInDb: tokenEntry.token };
+      }
     }
-
-    return { userId: user.id, email: user.email, hashedToken: tokenEntry.token };
+    // If no token matched after checking all valid ones
+    console.warn('Provided raw token did not match any valid stored password reset tokens after bcrypt comparison.');
+    return null;
   },
 
   // Reset User Password
