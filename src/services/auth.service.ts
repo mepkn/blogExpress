@@ -1,15 +1,17 @@
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm'; // Added gt
 import jwt from 'jsonwebtoken';
 import { db } from '../db';
-import { refreshTokens, users } from '../db/schema';
+import { refreshTokens, users, passwordResetTokens } from '../db/schema'; // Added passwordResetTokens
+import crypto from 'crypto'; // Added crypto
 
 // Environment Variable Setup & Validation
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const ACCESS_TOKEN_EXPIRATION = process.env.ACCESS_TOKEN_EXPIRATION || '15m';
 const REFRESH_TOKEN_EXPIRATION_SECONDS = parseInt(process.env.REFRESH_TOKEN_EXPIRATION_SECONDS || '604800', 10);
+const PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = parseInt(process.env.PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES || '60', 10); // Added
 const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || process.env.SALT_ROUNDS || '10', 10);
 
 if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
@@ -154,5 +156,78 @@ export const authService = {
     } catch (error) {
       return null;
     }
+  },
+
+  // Password Reset Token Hashing
+  hashPasswordResetToken: async (token: string): Promise<string> => {
+    return bcrypt.hash(token, BCRYPT_SALT_ROUNDS);
+  },
+
+  // Generate Password Reset Token
+  generatePasswordResetToken: async (userId: string): Promise<{ rawToken: string; hashedToken: string; expiresAt: Date }> => {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = await authService.hashPasswordResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES * 60 * 1000);
+    return { rawToken, hashedToken, expiresAt };
+  },
+
+  // Store Password Reset Token
+  storePasswordResetToken: async (userId: string, hashedToken: string, expiresAt: Date): Promise<void> => {
+    // Optional: Clean up old/expired tokens for the user before inserting a new one
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+
+    await db.insert(passwordResetTokens).values({
+      userId,
+      token: hashedToken, // Schema uses 'token' for the column name
+      expiresAt,
+    });
+  },
+
+  // Verify Password Reset Token
+  verifyPasswordResetToken: async (providedRawToken: string): Promise<{ userId: string; email: string; hashedToken: string } | null> => {
+    const hashedProvidedToken = await authService.hashPasswordResetToken(providedRawToken);
+
+    const tokenEntry = await db.query.passwordResetTokens.findFirst({
+      where: and(
+        eq(passwordResetTokens.token, hashedProvidedToken),
+        gt(passwordResetTokens.expiresAt, new Date()) // Check if token is not expired
+      ),
+    });
+
+    if (!tokenEntry) {
+      console.warn('Password reset token not found or expired for token hash:', hashedProvidedToken);
+      return null;
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, tokenEntry.userId),
+      columns: { id: true, email: true },
+    });
+
+    if (!user) {
+      console.error(`User ${tokenEntry.userId} not found for a valid password reset token. This should not happen.`);
+      // Attempt to clean up the orphaned token
+      await db.delete(passwordResetTokens).where(eq(passwordResetTokens.id, tokenEntry.id));
+      return null;
+    }
+
+    return { userId: user.id, email: user.email, hashedToken: tokenEntry.token };
+  },
+
+  // Reset User Password
+  resetUserPassword: async (userId: string, newPasswordPlain: string): Promise<boolean> => {
+    const newPasswordHash = await authService.hashPassword(newPasswordPlain);
+    const result = await db.update(users)
+      .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning({ id: users.id }); // Check if update was successful
+
+    return result.length > 0;
+  },
+
+  // Delete Password Reset Token (used after successful password reset)
+  deletePasswordResetToken: async (hashedToken: string): Promise<void> => {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, hashedToken));
+    console.log(`Password reset token deleted: ${hashedToken}`);
   },
 };

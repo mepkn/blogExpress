@@ -50,4 +50,32 @@ export const userService = {
     const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
     return result.length > 0 ? result[0] : null;
   },
+
+  // Find User By ID
+  findUserById: async (userId: string): Promise<PublicUser | null> => {
+    const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (user.length) {
+      const { passwordHash, ...publicUser } = user[0];
+      return publicUser;
+    }
+    return null;
+  },
+
+  // Change Password
+  changePassword: async (userId: string, oldPasswordPlain: string, newPasswordPlain: string): Promise<boolean> => {
+    const userArray = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!userArray.length) {
+      throw new Error('User not found.');
+    }
+    const user = userArray[0];
+
+    const isOldPasswordValid = await authService.comparePassword(oldPasswordPlain, user.passwordHash);
+    if (!isOldPasswordValid) {
+      throw new Error('Invalid old password.');
+    }
+
+    const newPasswordHash = await authService.hashPassword(newPasswordPlain);
+    await db.update(users).set({ passwordHash: newPasswordHash, updatedAt: new Date() }).where(eq(users.id, userId));
+    return true;
+  },
 };

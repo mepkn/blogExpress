@@ -14,3 +14,9 @@ authRouter.post('/refresh', authController.refreshTokenHandler);
 
 // POST /auth/logout - To invalidate a refresh token
 authRouter.post('/logout', authController.logoutHandler);
+
+// POST /auth/forgot-password - To request a password reset token
+authRouter.post('/forgot-password', authController.forgotPasswordHandler);
+
+// POST /auth/reset-password - To reset password with a token
+authRouter.post('/reset-password', authController.resetPasswordHandler);
