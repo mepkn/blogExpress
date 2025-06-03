@@ -26,3 +26,6 @@ postRouter.use('/:postId/comments', commentRouter);
 
 // Mount to /posts/:postId/favorite path
 postRouter.use('/:postId/favorite', postScopedFavoriteRouter);
+
+// GET /posts/tags/:tagName - Get posts by tag name
+postRouter.get('/tags/:tagName', postController.getPostsByTagHandler);
