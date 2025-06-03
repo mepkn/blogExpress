@@ -8,6 +8,13 @@
       "when": 1748628317380,
       "tag": "0000_married_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1748954235072,
+      "tag": "0001_woozy_clint_barton",
+      "breakpoints": true
     }
   ]
 }

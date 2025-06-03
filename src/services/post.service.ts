@@ -392,5 +392,3 @@ export const postService = {
     };
   },
 };
-
-[end of src/services/post.service.ts]
