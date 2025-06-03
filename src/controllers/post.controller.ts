@@ -13,17 +13,38 @@ export const postController = {
     if (!req.user) {
       return res.status(401).json({ message: 'User not authenticated.' });
     }
-    const { title, body, isPublic } = req.body;
+    const { title, body, isPublic, tags } = req.body; // Extract tags
+
+    // Validate title and body
     if (!title || !body) {
       return res.status(400).json({ message: 'Title and body are required.' });
     }
     if (typeof title !== 'string' || typeof body !== 'string') {
       return res.status(400).json({ message: 'Invalid input types for title or body.' });
     }
+    // Validate isPublic
     if (isPublic !== undefined && typeof isPublic !== 'boolean') {
       return res.status(400).json({ message: 'Invalid type for isPublic.' });
     }
-    const payload: CreatePostPayload = { title, body, isPublic: isPublic === undefined ? true : isPublic };
+    // Validate tags
+    if (tags !== undefined) {
+      if (!Array.isArray(tags)) {
+        return res.status(400).json({ message: 'Tags must be an array.' });
+      }
+      if (!tags.every(tag => typeof tag === 'string')) {
+        return res.status(400).json({ message: 'Each tag must be a string.' });
+      }
+    }
+
+    const payload: CreatePostPayload = {
+      title,
+      body,
+      isPublic: isPublic === undefined ? true : isPublic,
+    };
+    if (tags !== undefined) {
+      payload.tags = tags;
+    }
+
     const userId = req.user.id;
     try {
       const post = await postService.createPost(payload, userId);
@@ -79,7 +100,9 @@ export const postController = {
     }
     const { id: postId } = req.params;
     const userId = req.user.id;
-    const { title, body, isPublic } = req.body;
+    const { title, body, isPublic, tags } = req.body; // Extract tags
+
+    // Validate basic fields
     if (title !== undefined && typeof title !== 'string') {
       return res.status(400).json({ message: 'Invalid type for title.' });
     }
@@ -89,12 +112,33 @@ export const postController = {
     if (isPublic !== undefined && typeof isPublic !== 'boolean') {
       return res.status(400).json({ message: 'Invalid type for isPublic.' });
     }
+    // Validate tags
+    if (tags !== undefined) {
+      if (!Array.isArray(tags)) {
+        return res.status(400).json({ message: 'Tags must be an array.' });
+      }
+      if (!tags.every(tag => typeof tag === 'string')) {
+        return res.status(400).json({ message: 'Each tag must be a string.' });
+      }
+    }
+
     const payload: UpdatePostPayload = {};
     if (title !== undefined) payload.title = title;
     if (body !== undefined) payload.body = body;
     if (isPublic !== undefined) payload.isPublic = isPublic;
+    // Only include tags in the payload if it was actually provided in the request body
+    if (req.body.hasOwnProperty('tags')) {
+        payload.tags = tags;
+    }
+
+    // Check if any actual update data is being sent
     if (Object.keys(payload).length === 0) {
-      return res.status(400).json({ message: 'No update fields provided.' });
+      // If only tags are provided (e.g. to clear them with an empty array),
+      // payload would be empty here initially, but payload.tags would have been set.
+      // So, if 'tags' was in req.body, it's a valid update attempt.
+      if (!req.body.hasOwnProperty('tags')) {
+        return res.status(400).json({ message: 'No update fields provided.' });
+      }
     }
     try {
       const updatedPost = await postService.updatePost(postId, payload, userId);
@@ -126,6 +170,23 @@ export const postController = {
     } catch (error: any) {
       console.error(`Delete post (${postId}) error:`, error.message);
       return res.status(500).json({ message: 'Failed to delete post.' });
+    }
+  },
+
+  getPostsByTagHandler: async (req: Request, res: Response) => {
+    const { tagName } = req.params;
+    const paginationParams = getPaginationParams(req);
+    try {
+      // URL-decode tagName in case it contains special characters like %20 for spaces
+      const decodedTagName = decodeURIComponent(tagName);
+      const paginatedResult = await postService.getPostsByTagName(decodedTagName, paginationParams);
+      // The service returns an empty list if tag not found, which is fine for a 200 response.
+      // If we wanted a 404 for "tag not found", the service would need to throw a specific error
+      // or return a different structure.
+      return res.status(200).json(paginatedResult);
+    } catch (error: any) {
+      console.error(`Get posts by tag (${tagName}) error:`, error.message);
+      return res.status(500).json({ message: 'Failed to retrieve posts for this tag.' });
     }
   },
 };
