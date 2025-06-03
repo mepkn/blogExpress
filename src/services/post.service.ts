@@ -19,6 +19,9 @@ type DBTransaction = SQLiteTransaction<any, any, any, any>;
 
 // Helper function to process tags
 const processTags = async (postId: string, tagNames: string[] | undefined, tx: DBTransaction): Promise<void> => {
+  if (tagNames && tagNames.length > 5) {
+    throw new Error("A post can have a maximum of 5 tags.");
+  }
   // 1. Delete existing tag associations for the post
   await tx.delete(postTags).where(eq(postTags.postId, postId));
 
